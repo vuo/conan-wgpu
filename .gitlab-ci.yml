@@ -1,0 +1,36 @@
+build:
+    only:
+        - tags
+    parallel:
+        matrix:
+            - PLATFORM: Ubuntu
+              ARCH: x86_64
+              RUST_TARGET: --target x86_64-unknown-linux-gnu
+              CONAN_CONFIG: https://vuo.org/sites/default/files/conan-linux.zip
+            - PLATFORM: Ubuntu
+              ARCH: aarch64
+              RUST_TARGET: --target aarch64-unknown-linux-gnu
+              CONAN_CONFIG: https://vuo.org/sites/default/files/conan-linux.zip
+            - PLATFORM: macOS
+              ARCH: x86_64  # On macOS, we treat x86_64 as universal (x86_64 + arm64).
+              RUST_TARGET: --target x86_64-apple-darwin --target aarch64-apple-darwin
+              CONAN_CONFIG: https://vuo.org/sites/default/files/conan-macos.zip
+    tags:
+        - ${PLATFORM}
+        - Vuo
+    script:
+        - |
+          if [ ${PLATFORM} = macOS ]; then
+              if ! clang --version | grep clang-1200; then
+                  echo "Please run 'sudo xcode-select --switch /Applications/Xcode-12*.app/Contents/Developer' to activate Xcode 12+ (needed for arm64 support)."
+                  exit 1
+              fi
+          elif [ ${PLATFORM} = Ubuntu ]; then
+              PATH=~/.local/bin:$PATH
+              pip install conan
+          fi
+        - curl -sSf https://sh.rustup.rs | sh -s -- -y --no-modify-path ${RUST_TARGET}
+        - conan config install ${CONAN_CONFIG}
+        - conan user
+        - conan create . vuo+conan+wgpu/stable -s arch=${ARCH}
+        - CONAN_LOGIN_USERNAME=ci_user CONAN_PASSWORD=${CI_JOB_TOKEN} conan upload --remote vuo --all --no-overwrite all --confirm wgpu/*@vuo+conan+wgpu/stable
